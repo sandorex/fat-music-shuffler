@@ -1,42 +1,97 @@
-use std::fs::OpenOptions;
-use std::io::{self, prelude::*};
+mod cli;
+mod lsblk;
 
+use anyhow::{Context, Result, anyhow, bail};
+use clap::Parser;
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
+use std::fmt::Display;
+use std::fs::OpenOptions;
+use std::io::{self, prelude::*};
+use std::os::unix::fs::FileTypeExt;
 
-fn main() -> io::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    dbg!(&args);
+#[derive(Debug, Clone)]
+pub enum Target {
+    /// The device is a block device
+    BlockDevice(String),
 
-    if args.len() < 2 {
-        panic!("Please provide a path to the file");
+    /// Using a file
+    File(String),
+}
+
+// just print the target itself
+impl Display for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            Self::BlockDevice(x) => x,
+            Self::File(x) => x,
+        };
+        f.write_str(str)
+    }
+}
+
+impl TryFrom<String> for Target {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
+        let meta = std::fs::metadata(&value)
+            .with_context(|| anyhow!("Error getting metadata for file {value:?}"))?;
+
+        let ftype = meta.file_type();
+        if ftype.is_block_device() {
+            Ok(Self::BlockDevice(value))
+        } else if ftype.is_file() {
+            Ok(Self::File(value))
+        } else {
+            // invalid path
+            bail!("Invalid path {value:?}")
+        }
+    }
+}
+
+fn confirm_prompt(prompt: String) -> Result<()> {
+    print!("{prompt} (y/N): ");
+    std::io::stdout().flush()?;
+
+    let mut buffer = String::new();
+    std::io::stdin().read_line(&mut buffer)?;
+
+    match buffer.trim() {
+        "y" | "Y" | "yes" => {}
+        _ => bail!("User aborted"),
     }
 
-    let img_file = match OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(args.get(1).unwrap())
-    {
-        Ok(file) => file,
-        Err(err) => {
-            println!("Failed to open image!");
-            return Err(err);
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let args = cli::Cli::parse();
+    dbg!(&args);
+
+    match args.cmd {
+        cli::CliCommands::Format(x) => {
+            let target = TryInto::<Target>::try_into(x.target.clone())?;
+
+            match &target {
+                Target::BlockDevice(x) => {
+                    let data = lsblk::query_block_device(x)?;
+                    println!("{data:#?}");
+
+                    if !data.is_partition() {
+                        bail!("The target has to be a partition!");
+                    }
+
+                    // confirm_prompt(format!(
+                    //     "Erasing {target} ({size} MiB)\nAre you ABSOLUTELY sure you wish to proceed"
+                    // ))?;
+
+                    // println!("would erase");
+                }
+                _ => {}
+            }
         }
-    };
-    let buf_stream = BufStream::new(img_file);
-    let options = FsOptions::new().update_accessed_date(true);
-    let fs = FileSystem::new(buf_stream, options)?;
-    let root = fs.root_dir();
-    root.create_hardlink("10.mp3", "6.mp3")?;
-    root.create_hardlink("11.mp3", "9.mp3")?;
-    root.create_hardlink("12.mp3", "6.mp3")?;
-    root.create_hardlink("13.mp3", "9.mp3")?;
-    root.create_hardlink("14.mp3", "6.mp3")?;
-    root.create_hardlink("15.mp3", "9.mp3")?;
-    // for i in root.iter().flatten() {
-    //     println!("{i:?}");
-    // }
-    // let mut file = fs.root_dir().create_file("hello.txt")?;
-    // file.write_all(b"Hello World!")?;
+        _ => todo!(),
+    }
+
     Ok(())
 }
