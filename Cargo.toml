@@ -1,0 +1,9 @@
+[package]
+name = "mp3-shuffler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+fatfs = { path = "rust-fatfs" }
+fscommon = "0.1.1"
