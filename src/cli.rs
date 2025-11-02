@@ -9,33 +9,23 @@ pub struct Cli {
     pub cmd: CliCommands,
 }
 
-// impl Target {
-//     fn parse(input: &str) -> Result<Self, String> {
-//         if let Some(x) = input.strip_prefix("/dev/") {}
-//     }
-// }
-
-// #[derive(Args, Debug, Clone)]
-// pub struct TargetArg {}
-
 #[derive(Args, Debug, Clone)]
 pub struct CmdFormat {
-    /// Block device or file you want to target
+    /// Partition to format
     pub target: String,
 }
 
 #[derive(Args, Debug, Clone)]
 pub struct CmdShuffle {
-    /// Block device or file you want to target
+    /// Partition where to shuffle music
     pub target: String,
 }
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
-    /// Format target as FAT32
     Format(CmdFormat),
 
-    /// Reshuffle music hardlinks in target
+    /// Reshuffle music hardlinks
     Shuffle(CmdShuffle),
 }
 
