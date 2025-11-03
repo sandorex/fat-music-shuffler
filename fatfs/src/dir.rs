@@ -275,47 +275,32 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         }
     }
 
-    // TODO this needs some serious testing
     /// Creates a hardlink, basically a file entry that points to an existing file
-    pub fn create_hardlink(&self, path: &str, target: &str) -> Result<File<'a, IO, TP, OCC>, Error<IO::Error>> {
-        trace!("Dir::create_hardlink {} -> {}", path, target);
+    pub fn create_hardlink(&self, path: &str, target_dir: &Self, target: &str) -> Result<(), Error<IO::Error>> {
+        let (name, rest_opt) = split_path(path);
+        if let Some(rest) = rest_opt {
+            return self
+                .find_entry(name, Some(true), None)?
+                .to_dir()
+                .create_hardlink(rest, target_dir, target);
+        }
 
-        let target_entry = {
-            // traverse until the file is actually found
-            let (tname, trest_opt) = split_path(target);
-            if let Some(rest) = trest_opt {
-                return self
-                    .find_entry(tname, Some(true), None)?
-                    .to_dir()
-                    .create_hardlink(path, rest);
-            }
+        // find the target
+        let target_entry = target_dir.find_entry(target, None, None)?;
 
-            // final component - must exist and be a file
-            self.find_entry(tname, Some(false), None)?
-        };
-
-        // Do not create links to directories
+        // target cannot be a directory
         if target_entry.is_dir() {
-            error!("Target is a directory");
+            error!("Cannot hardlink a directory");
             return Err(Error::InvalidInput);
         }
 
-        // Gather metadata from target
+        // gather metadata from target
         let target_first_cluster = target_entry.first_cluster();
         let mut target_attrs = target_entry.attributes();
         let target_size = target_entry.len();
 
         // NOTE this should at least make the OS warn the user before deleting any links
         target_attrs.set(FileAttributes::SYSTEM, true);
-
-        // Traverse destination path (same pattern as create_file)
-        let (name, rest_opt) = split_path(path);
-        if let Some(rest) = rest_opt {
-            return self
-                .find_entry(name, Some(true), None)?
-                .to_dir()
-                .create_hardlink(rest, target);
-        }
 
         let r = self.check_for_existence(name, Some(false))?;
         let mut sfn_entry = match r {
@@ -343,7 +328,9 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
 
         sfn_entry.set_size(size_u32);
 
-        Ok(self.write_entry(name, sfn_entry)?.to_file())
+        self.write_entry(name, sfn_entry)?;
+
+        Ok(())
     }
 
     /// Creates new directory or opens existing.

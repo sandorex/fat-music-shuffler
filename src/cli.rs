@@ -45,9 +45,10 @@ pub struct CmdImport {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
-    // TODO like print how long will it take to repeat whole playlist
-    // / Prints information about current playlist
-    // Info,
+    // TODO this should also run on mounted fat32!
+    /// Prints information about current list of music
+    Info,
+
     /// Formats partition as FAT32 (ERASES ALL DATA!)
     Format(CmdFormat),
 

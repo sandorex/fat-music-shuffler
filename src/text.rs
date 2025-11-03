@@ -1,9 +1,10 @@
 //! Contains text files
 
-pub const README: &str = r#"Please read this file before editing the filesystem
+pub const README: &str = r#"Filesystem managed by fat32-music-shuffler
 
-This filesystem is managed by f32ms (fat32-music-shuffler) and it uses hardlinks, so deleting/modifying ANY FILE will corrupt the filesystem
+DO NOT EDIT THE FILESYSTEM IF YOU DONT KNOW WHAT YOU ARE DOING
 
-If the file DO_NOT_MODIFY is present that means the filesystem has hardlinks
+If the file "DO_NOT_MODIFY" is present it means there are hardlinks in place and any modifications to them will corrupt the filesystem
 
+Add files using `f32ms import` instead!
 "#;

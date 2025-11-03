@@ -2,13 +2,16 @@ mod cli;
 mod lsblk;
 mod text;
 
-use crate::cli::{CmdFormat, CmdShuffle};
+use crate::{
+    cli::{CmdFormat, CmdShuffle},
+    lsblk::BlockDeviceInfo,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use rand::seq::SliceRandom;
-use std::{io::prelude::*, ops::Div, time::Duration};
+use std::{io::prelude::*, time::Duration};
 
 const LABEL: [u8; 11] = [b'f', b'a', b't', b'3', b'2', b'm', b's', 0, 0, 0, 0];
 
@@ -39,6 +42,19 @@ fn confirm_prompt(prompt: String) -> Result<()> {
     Ok(())
 }
 
+fn confirm_partition(data: &BlockDeviceInfo, prompt: String) -> Result<()> {
+    confirm_prompt(format!(
+        "{prompt} partition {}{} ({})\nDo you wish to proceed",
+        data.path,
+        // optional label
+        data.label
+            .as_ref()
+            .map(|x| format!(" {x:?}"))
+            .unwrap_or_default(),
+        data.size
+    ))
+}
+
 fn main() -> Result<()> {
     let args = cli::Cli::parse();
 
@@ -60,13 +76,7 @@ fn format(args: CmdFormat) -> Result<()> {
         bail!("{:?} is not a partition", args.target);
     }
 
-    confirm_prompt(format!(
-        "Formatting partition {}{} ({})\nAre you ABSOLUTELY sure you wish to proceed",
-        data.path,
-        // optional label
-        data.label.map(|x| format!(" {x:?}")).unwrap_or_default(),
-        data.size
-    ))?;
+    confirm_partition(&data, "Formatting".to_string())?;
 
     println!("Formatting..");
 
@@ -113,7 +123,7 @@ fn shuffle(args: CmdShuffle) -> Result<()> {
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(data.path)?;
+        .open(&data.path)?;
 
     let stream = BufStream::new(file);
 
@@ -139,8 +149,6 @@ fn shuffle(args: CmdShuffle) -> Result<()> {
         }
     }
 
-    drop(music_dir);
-
     if music.len() < 3 {
         bail!("Shuffling requires at least 3 songs to be present!");
     }
@@ -159,6 +167,7 @@ fn shuffle(args: CmdShuffle) -> Result<()> {
         humantime::format_duration(duration)
     );
 
+    // NOTE: this will usually overshoot but it does not matter
     let repeat_count = (args.fill_duration.as_secs_f64() / duration.as_secs_f64())
         .ceil()
         .round() as usize;
@@ -168,21 +177,28 @@ fn shuffle(args: CmdShuffle) -> Result<()> {
         args.fill_duration
     );
 
-    confirm_prompt("No modifications were made yet, do you wish to continue?".to_string())?;
+    confirm_partition(&data, "No changes were made to".to_string())?;
+
+    // basically a flag that the filesystem contains links
+    root_dir.create_file(DIRTY_FLAG_FILE)?;
 
     let mut rng = rand::rng();
     let music_len = music.len();
 
-    let links_dir = root_dir.create_dir(LINK_DIR)?;
+    let link_dir = root_dir.create_dir(LINK_DIR)?;
+
+    println!("Hardlinking music files..");
 
     for repeat_index in 0..repeat_count {
         music.shuffle(&mut rng);
 
         for (i, name) in music.iter().enumerate() {
-            links_dir.create_hardlink(&format!("{}.mp3", (repeat_index * music_len) + i), name)?;
-            // println!("create {name:?} index {}", (repeat_index * music_len) + i);
+            let link_name = format!("{}.mp3", (repeat_index * music_len) + i);
+            link_dir.create_hardlink(&link_name, &music_dir, name)?;
         }
     }
+
+    println!("Created {} hardlinks", repeat_count * music_len);
 
     Ok(())
 }
