@@ -275,32 +275,21 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         }
     }
 
-    // vibe-coded using github copilot
-    /// Creates a second directory entry that points to an existing file's cluster chain.
-    ///
-    /// This emulates a hard-link: the new entry will reference the same first cluster
-    /// and will copy attributes and size from the target file. It must be used only for
-    /// regular files (not directories). Deletion semantics are NOT changed by this method:
-    /// removing either entry may free the cluster chain with the current delete implementation,
-    /// so you must ensure you handle deletion appropriately if you rely on hard-links.
-    ///
-    /// `path` is the destination path (where the new link will be created) relative to `self`.
-    /// `target` is the path to an existing file (also relative to `self`) which the new entry will point to.
+    // TODO this needs some serious testing
+    /// Creates a hardlink, basically a file entry that points to an existing file
     pub fn create_hardlink(&self, path: &str, target: &str) -> Result<File<'a, IO, TP, OCC>, Error<IO::Error>> {
-        trace!("Dir::create_symlink {} -> {}", path, target);
+        trace!("Dir::create_hardlink {} -> {}", path, target);
 
-        // Resolve target entry (traverse like open_file/create_file do).
-        // Use the same traversal pattern as other methods to support multi-component paths.
         let target_entry = {
+            // traverse until the file is actually found
             let (tname, trest_opt) = split_path(target);
             if let Some(rest) = trest_opt {
-                // TODO i do not think this call to .create_symlink makes any sense?
-                // target is in a subdirectory - recurse into that directory and continue resolution
                 return self
                     .find_entry(tname, Some(true), None)?
                     .to_dir()
-                    .create_hardlink(path, target);
+                    .create_hardlink(path, rest);
             }
+
             // final component - must exist and be a file
             self.find_entry(tname, Some(false), None)?
         };
@@ -313,45 +302,48 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
 
         // Gather metadata from target
         let target_first_cluster = target_entry.first_cluster();
-        let target_attrs = target_entry.attributes();
+        let mut target_attrs = target_entry.attributes();
         let target_size = target_entry.len();
+
+        // NOTE this should at least make the OS warn the user before deleting any links
+        target_attrs.set(FileAttributes::SYSTEM, true);
 
         // Traverse destination path (same pattern as create_file)
         let (name, rest_opt) = split_path(path);
         if let Some(rest) = rest_opt {
-            // TODO i do not think this call to .create_symlink makes any sense?
             return self
                 .find_entry(name, Some(true), None)?
                 .to_dir()
                 .create_hardlink(rest, target);
         }
 
-        // Make sure destination does not already exist and get a short-name if needed
         let r = self.check_for_existence(name, Some(false))?;
-        match r {
-            // destination slot available -> create directory entry that points to same cluster
+        let mut sfn_entry = match r {
+            // file does not exist create it
             DirEntryOrShortName::ShortName(short_name) => {
-                let mut sfn_entry = self.create_sfn_entry(short_name, target_attrs, target_first_cluster);
-                sfn_entry.set_created(target_entry.created());
-                sfn_entry.set_accessed(target_entry.accessed());
-                sfn_entry.set_modified(target_entry.modified());
-
-                // copy size (truncate to u32 if necessary)
-                let size_u32 = if target_size > u32::MAX as u64 {
-                    u32::MAX
-                } else {
-                    target_size as u32
-                };
-                // DirFileEntryData exposes setters used elsewhere in the crate; set size here.
-                // If the concrete setter has a different name the call should be adjusted accordingly.
-                sfn_entry.set_size(size_u32);
-
-                Ok(self.write_entry(name, sfn_entry)?.to_file())
+                self.create_sfn_entry(short_name, target_attrs, target_first_cluster)
             }
-            // TODO the destination should be overwritten!
-            // destination already exists - return existing file (mirror create_file behavior)
-            DirEntryOrShortName::DirEntry(e) => Ok(e.to_file()),
-        }
+
+            // file exists, override it
+            DirEntryOrShortName::DirEntry(e) => {
+                self.create_sfn_entry(e.raw_short_name().clone(), target_attrs, target_first_cluster)
+            }
+        };
+
+        sfn_entry.set_created(target_entry.created());
+        sfn_entry.set_accessed(target_entry.accessed());
+        sfn_entry.set_modified(target_entry.modified());
+
+        // copy size (truncate to u32 if necessary)
+        let size_u32 = if target_size > u32::MAX as u64 {
+            u32::MAX
+        } else {
+            target_size as u32
+        };
+
+        sfn_entry.set_size(size_u32);
+
+        Ok(self.write_entry(name, sfn_entry)?.to_file())
     }
 
     /// Creates new directory or opens existing.
@@ -419,6 +411,57 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         Ok(true)
     }
 
+    fn _remove(&self, path: &str, free_cluster: bool) -> Result<(), Error<IO::Error>> {
+        trace!("Dir::remove {}", path);
+        // traverse path
+        let (name, rest_opt) = split_path(path);
+        if let Some(rest) = rest_opt {
+            let e = self.find_entry(name, Some(true), None)?;
+            return e.to_dir().remove(rest);
+        }
+        // in case of directory check if it is empty
+        let e = self.find_entry(name, None, None)?;
+        if e.is_dir() && !e.to_dir().is_empty()? {
+            return Err(Error::DirectoryIsNotEmpty);
+        }
+        // free data
+        if free_cluster {
+            if let Some(n) = e.first_cluster() {
+                self.fs.free_cluster_chain(n)?;
+            }
+        }
+        // free long and short name entries
+        let mut stream = self.stream.clone();
+        stream.seek(SeekFrom::Start(e.offset_range.0))?;
+        let num = ((e.offset_range.1 - e.offset_range.0) / u64::from(DIR_ENTRY_SIZE)) as usize;
+        for _ in 0..num {
+            let mut data = DirEntryData::deserialize(&mut stream)?;
+            trace!("removing dir entry {:?}", data);
+            data.set_deleted();
+            stream.seek(SeekFrom::Current(-i64::from(DIR_ENTRY_SIZE)))?;
+            data.serialize(&mut stream)?;
+        }
+        Ok(())
+    }
+
+    /// Removes entry of existing file or directory wthout freeing the data.
+    ///
+    /// `path` is a '/' separated file path relative to self directory.
+    /// Make sure there is no reference to this file (no File instance) or filesystem corruption
+    /// can happen.
+    ///
+    /// # Errors
+    ///
+    /// Errors that can be returned:
+    ///
+    /// * `Error::NotFound` will be returned if `path` points to a non-existing directory entry.
+    /// * `Error::InvalidInput` will be returned if `path` points to a file that is not a directory.
+    /// * `Error::DirectoryIsNotEmpty` will be returned if the specified directory is not empty.
+    /// * `Error::Io` will be returned if the underlying storage object returned an I/O error.
+    pub fn remove_entry(&self, path: &str) -> Result<(), Error<IO::Error>> {
+        self._remove(path, false)
+    }
+
     /// Removes existing file or directory.
     ///
     /// `path` is a '/' separated file path relative to self directory.
@@ -434,34 +477,7 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
     /// * `Error::DirectoryIsNotEmpty` will be returned if the specified directory is not empty.
     /// * `Error::Io` will be returned if the underlying storage object returned an I/O error.
     pub fn remove(&self, path: &str) -> Result<(), Error<IO::Error>> {
-        trace!("Dir::remove {}", path);
-        // traverse path
-        let (name, rest_opt) = split_path(path);
-        if let Some(rest) = rest_opt {
-            let e = self.find_entry(name, Some(true), None)?;
-            return e.to_dir().remove(rest);
-        }
-        // in case of directory check if it is empty
-        let e = self.find_entry(name, None, None)?;
-        if e.is_dir() && !e.to_dir().is_empty()? {
-            return Err(Error::DirectoryIsNotEmpty);
-        }
-        // free data
-        if let Some(n) = e.first_cluster() {
-            self.fs.free_cluster_chain(n)?;
-        }
-        // free long and short name entries
-        let mut stream = self.stream.clone();
-        stream.seek(SeekFrom::Start(e.offset_range.0))?;
-        let num = ((e.offset_range.1 - e.offset_range.0) / u64::from(DIR_ENTRY_SIZE)) as usize;
-        for _ in 0..num {
-            let mut data = DirEntryData::deserialize(&mut stream)?;
-            trace!("removing dir entry {:?}", data);
-            data.set_deleted();
-            stream.seek(SeekFrom::Current(-i64::from(DIR_ENTRY_SIZE)))?;
-            data.serialize(&mut stream)?;
-        }
-        Ok(())
+        self._remove(path, true)
     }
 
     /// Renames or moves existing file or directory.

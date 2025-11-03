@@ -41,6 +41,10 @@ impl BlockDeviceInfo {
 }
 
 pub fn query_block_device(path: &str) -> Result<BlockDeviceInfo> {
+    if !std::fs::exists(path).unwrap_or(false) {
+        bail!("Block device {path:?} does not exist");
+    }
+
     let cmd = std::process::Command::new("lsblk")
         .args(["-O", "--json", path])
         .output()
