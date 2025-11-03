@@ -12,6 +12,12 @@ pub struct Cli {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct CmdInfo {
+    /// Partition or mounted path to inspect
+    pub target: String,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct CmdFormat {
     /// Partition to format
     pub target: String,
@@ -45,9 +51,8 @@ pub struct CmdImport {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
-    // TODO this should also run on mounted fat32!
     /// Prints information about current list of music
-    Info,
+    Info(CmdInfo),
 
     /// Formats partition as FAT32 (ERASES ALL DATA!)
     Format(CmdFormat),
@@ -58,7 +63,7 @@ pub enum CliCommands {
     /// Cleans up the links making it editable directly
     Clean(CmdClean),
 
-    /// Import music
+    /// Import music, does not reshuffle music
     Import(CmdImport),
 }
 
