@@ -58,7 +58,6 @@ fn main() -> Result<()> {
     let args = cli::Cli::parse();
 
     match args.cmd {
-        cli::CliCommands::Info(x) => commands::info(x)?,
         cli::CliCommands::Format(x) => commands::format(x)?,
         cli::CliCommands::Shuffle(x) => commands::shuffle(x)?,
         cli::CliCommands::Clean(x) => commands::clean(x)?,

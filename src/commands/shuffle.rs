@@ -1,10 +1,11 @@
-use std::time::Duration;
 use crate::cli::CmdShuffle;
 use crate::{DIRTY_FLAG_FILE, prelude::*};
 use crate::{LINK_DIR, MUSIC_DIR, MUSIC_EXT};
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use rand::seq::SliceRandom;
+use std::io::Write;
+use std::time::Duration;
 
 pub fn shuffle(args: CmdShuffle) -> Result<()> {
     let data = crate::lsblk::query_block_device(&args.target)?;
@@ -66,7 +67,7 @@ pub fn shuffle(args: CmdShuffle) -> Result<()> {
         .round() as usize;
 
     println!(
-        "The songs would repeat {repeat_count} times to achieve duration of {}",
+        "The songs would repeat {repeat_count} times to achieve duration of at least {}",
         args.fill_duration
     );
 
@@ -80,18 +81,37 @@ pub fn shuffle(args: CmdShuffle) -> Result<()> {
 
     let link_dir = root_dir.create_dir(LINK_DIR)?;
 
-    println!("Hardlinking music files..");
+    // clean the old links before creating new ones
+    {
+        // count links ignoring any directories
+        let old_links = link_dir
+            .iter()
+            .flatten()
+            .filter(|x| x.is_file())
+            .map(|x| x.file_name())
+            .collect::<Vec<_>>();
 
+        for (i, file_name) in old_links.iter().enumerate() {
+            link_dir.remove_entry(file_name)?;
+            print!("\rRemoving old links [{}/{}]", i + 1, old_links.len());
+            let _ = std::io::stdout().flush();
+        }
+        println!();
+    }
+
+    let total_link_count = repeat_count * music_len;
     for repeat_index in 0..repeat_count {
         music.shuffle(&mut rng);
 
         for (i, name) in music.iter().enumerate() {
-            let link_name = format!("{}.mp3", (repeat_index * music_len) + i);
-            link_dir.create_hardlink(&link_name, &music_dir, name)?;
+            let index = (repeat_index * music_len) + i;
+            print!("\rCreating new links [{}/{total_link_count}]", index + 1);
+            let _ = std::io::stdout().flush();
+            link_dir.create_hardlink(&format!("{}.mp3", index), &music_dir, name)?;
         }
     }
 
-    println!("Created {} hardlinks", repeat_count * music_len);
+    println!("\nDone!");
 
     Ok(())
 }

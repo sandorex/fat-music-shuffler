@@ -6,6 +6,3 @@ pub use shuffle::shuffle;
 
 mod clean;
 pub use clean::clean;
-
-mod info;
-pub use info::info;

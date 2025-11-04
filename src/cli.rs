@@ -12,12 +12,6 @@ pub struct Cli {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct CmdInfo {
-    /// Partition or mounted path to inspect
-    pub target: String,
-}
-
-#[derive(Args, Debug, Clone)]
 pub struct CmdFormat {
     /// Partition to format
     pub target: String,
@@ -51,9 +45,6 @@ pub struct CmdImport {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
-    /// Prints information about current list of music
-    Info(CmdInfo),
-
     /// Formats partition as FAT32 (ERASES ALL DATA!)
     Format(CmdFormat),
 
