@@ -1,4 +1,5 @@
 use crate::cli::CmdShuffle;
+use crate::util::BlockDevice;
 use crate::{DIRTY_FLAG_FILE, prelude::*};
 use crate::{LINK_DIR, MUSIC_DIR, MUSIC_EXT};
 use fatfs::{FileSystem, FsOptions};
@@ -7,17 +8,18 @@ use rand::seq::SliceRandom;
 use std::io::Write;
 use std::time::Duration;
 
-pub fn shuffle(args: CmdShuffle) -> Result<()> {
-    let data = crate::lsblk::query_block_device(&args.target)?;
-
-    if !data.is_partition() {
-        bail!("{:?} is not a partition", args.target);
+pub fn shuffle(target: BlockDevice, args: CmdShuffle) -> Result<()> {
+    if !target.is_partition {
+        bail!(
+            "Shuffle works only on partitions, {:?} is not a partition",
+            args.target
+        );
     }
 
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(&data.path)?;
+        .open(&target.path)?;
 
     let stream = BufStream::new(file);
 
@@ -47,31 +49,37 @@ pub fn shuffle(args: CmdShuffle) -> Result<()> {
         bail!("Shuffling requires at least 3 songs to be present!");
     }
 
-    if duration.as_secs_f64() > args.fill_duration.as_secs_f64() {
-        bail!(
-            "Duration requested is lower than total duration of songs ({} < {})",
-            args.fill_duration,
+    let repeat_count = if let Some(repeat_duration) = args.repeat_fill {
+        if duration.as_secs_f64() > repeat_duration.as_secs_f64() {
+            bail!(
+                "Duration requested is lower than total duration of songs ({} < {})",
+                repeat_duration,
+                humantime::format_duration(duration)
+            );
+        }
+
+        println!(
+            "Found {} songs, total duration is {}",
+            music.len(),
             humantime::format_duration(duration)
         );
-    }
 
-    println!(
-        "Found {} songs, total duration is {}",
-        music.len(),
-        humantime::format_duration(duration)
-    );
+        // NOTE: this will usually overshoot but it does not matter
+        let repeat_count = (repeat_duration.as_secs_f64() / duration.as_secs_f64())
+            .ceil()
+            .round() as usize;
 
-    // NOTE: this will usually overshoot but it does not matter
-    let repeat_count = (args.fill_duration.as_secs_f64() / duration.as_secs_f64())
-        .ceil()
-        .round() as usize;
+        println!(
+            "The songs would repeat {repeat_count} times to achieve duration of at least {}",
+            repeat_duration
+        );
 
-    println!(
-        "The songs would repeat {repeat_count} times to achieve duration of at least {}",
-        args.fill_duration
-    );
+        repeat_count
+    } else {
+        1
+    };
 
-    crate::confirm_partition(&data, "No changes were made to".to_string())?;
+    crate::confirm_partition(&target, "No changes were made to".to_string())?;
 
     // basically a flag that the filesystem contains links
     root_dir.create_file(DIRTY_FLAG_FILE)?;
@@ -91,12 +99,14 @@ pub fn shuffle(args: CmdShuffle) -> Result<()> {
             .map(|x| x.file_name())
             .collect::<Vec<_>>();
 
-        for (i, file_name) in old_links.iter().enumerate() {
-            link_dir.remove_entry(file_name)?;
-            print!("\rRemoving old links [{}/{}]", i + 1, old_links.len());
-            let _ = std::io::stdout().flush();
+        if !old_links.is_empty() {
+            for (i, file_name) in old_links.iter().enumerate() {
+                link_dir.remove_entry(file_name)?;
+                print!("\rRemoving old links [{}/{}]", i + 1, old_links.len());
+                let _ = std::io::stdout().flush();
+            }
+            println!();
         }
-        println!();
     }
 
     let total_link_count = repeat_count * music_len;

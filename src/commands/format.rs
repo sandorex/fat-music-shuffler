@@ -11,15 +11,20 @@ pub fn format(args: CmdFormat) -> Result<()> {
     // TODO this will say partition but it may not actually be a partition
     crate::confirm_partition(&data, "Formatting".to_string())?;
 
-    if data.is_partition() {
-        format_partition(&data.path)?;
-    } else {
-        format_disk(&data.path)?;
-    }
+    let partition_path = {
+        // if its a disk format the whole disk
+        if !data.is_partition() {
+            format_disk(&data.path)?;
 
-    println!("Setting up the directory structure..");
+            // NOTE it should always be the first and only partition
+            format!("{}1", data.path)
+        } else {
+            data.path.clone()
+        }
+    };
 
-    setup(&data.path)?;
+    format_partition(&partition_path)?;
+    setup(&partition_path)?;
 
     println!("Done!");
 
@@ -69,6 +74,8 @@ fn format_disk(path: &str) -> Result<()> {
 }
 
 fn setup(path: &str) -> Result<()> {
+    println!("Setting up the directory structure..");
+
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)

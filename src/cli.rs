@@ -7,6 +7,11 @@ use humantime::Duration;
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about)]
 pub struct Cli {
+    /// Target block device, leave empty for prompt
+    // hide the flag on windows cause its useless
+    #[cfg_attr(target_os = "windows", clap(skip))]
+    pub target: Option<String>,
+
     #[command(subcommand)]
     pub cmd: CliCommands,
 }
@@ -22,9 +27,14 @@ pub struct CmdShuffle {
     /// Partition with the music
     pub target: String,
 
-    /// Repeat the songs until it is this long
-    #[clap(long, default_value = "3 days")]
-    pub fill_duration: Duration,
+    /// Repeats all songs until they fill up at minimum this amount of time
+    ///
+    /// This is a hack to implement quasi-shuffle by repeating everything but
+    /// in different predefined order
+    ///
+    /// This feature can create A LOT of links so beware it can take a while
+    #[clap(long)]
+    pub repeat_fill: Option<Duration>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -35,26 +45,27 @@ pub struct CmdClean {
 
 #[derive(Args, Debug, Clone)]
 pub struct CmdImport {
-    /// Partition to import music into
-    pub target: String,
-
-    /// MP3 Files
-    #[clap(required = true, num_args = 1..)]
+    /// Files to import
+    #[clap(num_args = 1..)]
     pub files: Vec<PathBuf>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
-    /// Formats partition as FAT32 (ERASES ALL DATA!)
+    /// Formats device/partition (ERASES ALL DATA!)
+    ///
+    /// In case target is a device block file then it formats it to contain a
+    /// single FAT32 partition with MBR/BIOS partition table
+    #[cfg_attr(target_os = "linux", clap(skip))]
     Format(CmdFormat),
 
-    /// Shuffle music
+    /// Shuffle imported music
     Shuffle(CmdShuffle),
 
     /// Cleans up the links making it editable directly
     Clean(CmdClean),
 
-    /// Import music, does not reshuffle music
+    /// Copies all files so no mounting is required, does not reshuffle music
     Import(CmdImport),
 }
 

@@ -1,0 +1,49 @@
+use std::fmt::Display;
+
+#[derive(Debug, Clone)]
+pub struct BlockDevice {
+    /// Path to open the device
+    pub path: String,
+
+    /// Is the device removable (SD Card, external SSD/HDD, etc..)
+    pub removable: bool,
+
+    /// Is the block device a partition or a disk
+    pub is_partition: bool,
+
+    /// Static human representation of the device
+    pub repr: String,
+
+    /// Partitions of the disk (if it is a disk)
+    pub partitions: Option<Vec<Self>>,
+}
+
+// just print the representation
+impl Display for BlockDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.repr)
+    }
+}
+
+impl BlockDevice {
+    pub fn open(&self, readonly: bool) -> std::io::Result<std::fs::File> {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(!readonly)
+            .open(&self.path)
+    }
+}
+
+// pub trait BlockDevice: Sized + Clone + Display {
+//     /// Check if block device is a partition
+//     fn is_partition(&self) -> bool;
+
+//     /// Is the device removable (SD Card, external SSD/HDD, etc..)
+//     fn is_removable(&self) -> bool;
+
+//     /// Get partitions if it is a disk
+//     fn get_partitions(&self) -> Option<Vec<&Self>>;
+
+//     /// Open the disk or partition as a file
+//     fn open(&self, readonly: bool) -> std::io::Result<std::fs::File>;
+// }
