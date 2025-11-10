@@ -1,44 +1,51 @@
+use crate::cli::Cli;
 use crate::prelude::*;
-use crate::{LABEL, LINK_DIR, MUSIC_DIR, cli::CmdFormat};
+use crate::util::BlockDevice;
+use crate::{LABEL, LINK_DIR, MUSIC_DIR};
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use std::io::prelude::*;
 
-// TODO untested
-pub fn format(args: CmdFormat) -> Result<()> {
-    let data = crate::lsblk::query_block_device(&args.target)?;
-
-    // TODO this will say partition but it may not actually be a partition
-    crate::confirm_partition(&data, "Formatting".to_string())?;
-
-    let partition_path = {
-        // if its a disk format the whole disk
-        if !data.is_partition() {
-            format_disk(&data.path)?;
-
-            // NOTE it should always be the first and only partition
-            format!("{}1", data.path)
-        } else {
-            data.path.clone()
-        }
+pub fn format(args: Cli) -> Result<()> {
+    let mut target = if let Some(target) = args.target.as_ref() {
+        crate::lsblk::query_block_device(target)?
+    } else {
+        crate::ask_for_target(false, !args.show_all_disks)?
     };
 
-    format_partition(&partition_path)?;
-    setup(&partition_path)?;
+    crate::confirm_prompt(format!(
+        "Formatting {} {target}, do you wish to proceed?",
+        if target.is_partition {
+            "partition"
+        } else {
+            "disk"
+        }
+    ))?;
+
+    // if its a disk format the whole disk
+    if !target.is_partition {
+        format_disk(&target.path)?;
+
+        // NOTE it should always be the first and only partition
+        target.path = format!("{}1", target.path);
+
+        if std::fs::exists(&target.path).unwrap_or(false) {
+            bail!("Partition does not exist after formatting");
+        }
+    }
+
+    format_partition(&target)?;
+    setup(&target)?;
 
     println!("Done!");
 
     Ok(())
 }
 
-fn format_partition(path: &str) -> Result<()> {
+fn format_partition(target: &BlockDevice) -> Result<()> {
     use fatfs::{FormatVolumeOptions, StdIoWrapper, format_volume};
 
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
-
+    let file = target.open(false)?;
     let mut stream = StdIoWrapper::from(BufStream::new(file));
 
     // quick format
@@ -46,7 +53,7 @@ fn format_partition(path: &str) -> Result<()> {
         &mut stream,
         FormatVolumeOptions::new()
             .fat_type(fatfs::FatType::Fat32)
-            .volume_label(LABEL), // TODO allow custom volume names
+            .volume_label(LABEL),
     )?;
 
     Ok(())
@@ -73,14 +80,10 @@ fn format_disk(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn setup(path: &str) -> Result<()> {
+fn setup(target: &BlockDevice) -> Result<()> {
     println!("Setting up the directory structure..");
 
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
-
+    let file = target.open(false)?;
     let stream = BufStream::new(file);
 
     println!("Creating required files..");

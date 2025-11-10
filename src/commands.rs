@@ -1,5 +1,5 @@
-// mod format;
-// pub use format::format;
+mod format;
+pub use format::format;
 
 mod shuffle;
 pub use shuffle::shuffle;

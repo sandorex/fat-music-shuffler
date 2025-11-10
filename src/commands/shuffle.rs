@@ -1,5 +1,4 @@
-use crate::cli::CmdShuffle;
-use crate::util::BlockDevice;
+use crate::cli::{Cli, CmdShuffle};
 use crate::{DIRTY_FLAG_FILE, prelude::*};
 use crate::{LINK_DIR, MUSIC_DIR, MUSIC_EXT};
 use fatfs::{FileSystem, FsOptions};
@@ -8,21 +7,19 @@ use rand::seq::SliceRandom;
 use std::io::Write;
 use std::time::Duration;
 
-pub fn shuffle(target: BlockDevice, args: CmdShuffle) -> Result<()> {
-    if !target.is_partition {
-        bail!(
-            "Shuffle works only on partitions, {:?} is not a partition",
-            args.target
-        );
-    }
+pub fn shuffle(args: &Cli, cmd_args: &CmdShuffle) -> Result<()> {
+    let target = if let Some(target) = args.target.as_ref() {
+        crate::lsblk::query_block_device(target)?
+    } else {
+        crate::ask_for_target(true, !args.show_all_disks)?
+    };
 
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&target.path)?;
+    crate::confirm_prompt(format!(
+        "Shuffling music on partition {target}, do you wish to proceed?",
+    ))?;
 
+    let file = target.open(false)?;
     let stream = BufStream::new(file);
-
     let fs = FileSystem::new(stream, FsOptions::new())?;
     let root_dir = fs.root_dir();
 
@@ -49,7 +46,7 @@ pub fn shuffle(target: BlockDevice, args: CmdShuffle) -> Result<()> {
         bail!("Shuffling requires at least 3 songs to be present!");
     }
 
-    let repeat_count = if let Some(repeat_duration) = args.repeat_fill {
+    let repeat_count = if let Some(repeat_duration) = cmd_args.repeat_fill {
         if duration.as_secs_f64() > repeat_duration.as_secs_f64() {
             bail!(
                 "Duration requested is lower than total duration of songs ({} < {})",
@@ -69,17 +66,17 @@ pub fn shuffle(target: BlockDevice, args: CmdShuffle) -> Result<()> {
             .ceil()
             .round() as usize;
 
-        println!(
-            "The songs would repeat {repeat_count} times to achieve duration of at least {}",
+        println!();
+
+        crate::confirm_prompt(format!(
+            "The songs would repeat {repeat_count} times to achieve duration of at least {}, do you wish to proceed?",
             repeat_duration
-        );
+        ))?;
 
         repeat_count
     } else {
         1
     };
-
-    crate::confirm_partition(&target, "No changes were made to".to_string())?;
 
     // basically a flag that the filesystem contains links
     root_dir.create_file(DIRTY_FLAG_FILE)?;

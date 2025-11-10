@@ -12,21 +12,16 @@ pub struct Cli {
     #[cfg_attr(target_os = "windows", clap(skip))]
     pub target: Option<String>,
 
+    /// Shows all disk devices instead of only removable ones (SD, Flash drive..)
+    #[clap(long)]
+    pub show_all_disks: bool,
+
     #[command(subcommand)]
     pub cmd: CliCommands,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct CmdFormat {
-    /// Partition to format
-    pub target: String,
-}
-
-#[derive(Args, Debug, Clone)]
 pub struct CmdShuffle {
-    /// Partition with the music
-    pub target: String,
-
     /// Repeats all songs until they fill up at minimum this amount of time
     ///
     /// This is a hack to implement quasi-shuffle by repeating everything but
@@ -56,8 +51,8 @@ pub enum CliCommands {
     ///
     /// In case target is a device block file then it formats it to contain a
     /// single FAT32 partition with MBR/BIOS partition table
-    #[cfg_attr(target_os = "linux", clap(skip))]
-    Format(CmdFormat),
+    #[cfg_attr(target_os = "windows", clap(skip))]
+    Format,
 
     /// Shuffle imported music
     Shuffle(CmdShuffle),

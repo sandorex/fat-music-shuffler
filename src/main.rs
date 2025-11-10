@@ -11,7 +11,7 @@ pub mod prelude {
 use crate::util::BlockDevice;
 use clap::Parser;
 use prelude::*;
-use std::{char::REPLACEMENT_CHARACTER, collections::HashMap, io::prelude::*, ops::Deref};
+use std::io::prelude::*;
 
 const LABEL: [u8; 11] = [b'f', b'a', b't', b'3', b'2', b'm', b's', 0, 0, 0, 0];
 
@@ -42,25 +42,12 @@ fn confirm_prompt(prompt: String) -> Result<()> {
     Ok(())
 }
 
-#[deprecated]
-fn confirm_partition(bd: &BlockDevice, prompt: String) -> Result<()> {
-    confirm_prompt(format!(
-        "{prompt} {} {bd}\nDo you wish to proceed",
-        if bd.is_partition { "partition" } else { "disk" }
-    ))
-}
-
-fn choose_option(options: &Vec<String>) -> Result<usize> {
-    println!();
-    for (i, opt) in options.iter().enumerate() {
-        println!("{i}: {opt}");
-    }
-
+fn choose_option(option_count: usize, message: &str) -> Result<usize> {
     let mut buffer = String::with_capacity(16);
     let mut ans: String;
 
     let index = loop {
-        print!("Please choose an option (0-{}): ", options.len() - 1);
+        print!("{message} (0-{}) ", option_count - 1);
         std::io::stdout().flush()?;
 
         buffer.clear();
@@ -74,7 +61,7 @@ fn choose_option(options: &Vec<String>) -> Result<usize> {
         }
 
         match ans.parse::<usize>() {
-            Ok(x) if x < options.len() => break x,
+            Ok(x) if x < option_count => break x,
 
             _ => {
                 println!("Invalid answer {ans:?}");
@@ -86,43 +73,80 @@ fn choose_option(options: &Vec<String>) -> Result<usize> {
     Ok(index)
 }
 
-fn main() -> Result<()> {
-    let args = cli::Cli::parse();
+fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<BlockDevice> {
+    let devices = lsblk::query_all_block_devices()?;
 
-    dbg!(&args);
+    let find_device = |path: &str| -> Option<&BlockDevice> {
+        for device in &devices {
+            if device.path == path {
+                return Some(device);
+            }
 
-    let device = if let Some(target) = args.target.as_ref() {
-        lsblk::query_block_device(target)?
-    } else {
-        let devices = lsblk::query_all_block_devices()?;
-        let mut map: HashMap<usize, &BlockDevice> = HashMap::new();
-        let mut options: Vec<String> = vec![];
-        let mut count: usize = 0;
-
-        for disk in devices.iter() {
-            map.insert(count, disk);
-            options.push(format!("{disk}"));
-            count += 1;
-
-            if let Some(partitions) = disk.partitions.as_ref() {
-                for part in partitions {
-                    map.insert(count, part);
-                    options.push(format!(" {part}"));
-                    count += 1;
-                }
+            if let Some(found) = device
+                .partitions
+                .as_ref()
+                .and_then(|x| x.iter().find(|y| y.path == path))
+            {
+                return Some(found);
             }
         }
 
-        let ans = choose_option(&options)?;
-
-        (*map.get(&ans).unwrap()).clone()
+        None
     };
 
-    println!("chosen one: {device}");
+    for device in &devices {
+        // hide non-removable if requested
+        if only_removable && !device.removable {
+            continue;
+        }
 
-    match args.cmd {
-        // cli::CliCommands::Format(x) => commands::format(x)?,
-        cli::CliCommands::Shuffle(x) => commands::shuffle(device, x)?,
+        println!("{device}");
+        if let Some(partitions) = &device.partitions {
+            for part in partitions {
+                println!("  {part}");
+            }
+        }
+    }
+
+    let mut buffer = String::with_capacity(32);
+    let mut ans: String;
+
+    let device = loop {
+        print!("Enter device path: ");
+        std::io::stdout().flush()?;
+
+        buffer.clear();
+        std::io::stdin().read_line(&mut buffer)?;
+
+        ans = buffer.trim().to_string();
+
+        // allow user to abort by entering nothing
+        if ans.is_empty() {
+            bail!("User aborted");
+        }
+
+        if let Some(device) = find_device(&ans) {
+            if no_disk && !device.is_partition {
+                println!("Invalid path, {ans:?} is not a partition");
+                continue;
+            }
+
+            break device;
+        } else {
+            println!("Invalid path, {ans:?} is not a device");
+            continue;
+        }
+    };
+
+    Ok(device.clone())
+}
+
+fn main() -> Result<()> {
+    let args = cli::Cli::parse();
+
+    match &args.cmd {
+        cli::CliCommands::Format => commands::format(args)?,
+        cli::CliCommands::Shuffle(x) => commands::shuffle(&args, x)?,
         // cli::CliCommands::Clean(x) => commands::clean(x)?,
         _ => todo!(),
     }
