@@ -148,7 +148,7 @@ fn main() -> Result<()> {
                 crate::ask_for_target(true, !args.show_all_disks)?
             };
 
-            commands::import(target, x)?;
+            commands::import(target, true, x)?;
         }
     }
 

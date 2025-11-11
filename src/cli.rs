@@ -34,9 +34,9 @@ pub struct CmdShuffle {
 
 #[derive(Args, Debug, Clone)]
 pub struct CmdImport {
-    /// Files to import
-    #[clap(num_args = 1..)]
-    pub files: Vec<PathBuf>,
+    /// Files or directories to recursively scan for MP3 files to import
+    #[clap(required = true, num_args = 1..)]
+    pub paths: Vec<PathBuf>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -54,7 +54,7 @@ pub enum CliCommands {
     /// Cleans up the links making it editable directly
     Clean,
 
-    /// Copies all files so no mounting is required, does not reshuffle music
+    /// Imports file into the filesystem without mounting it, will not overwrite files
     Import(CmdImport),
 }
 
