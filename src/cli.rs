@@ -33,12 +33,6 @@ pub struct CmdShuffle {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct CmdClean {
-    /// Partition to clean
-    pub target: String,
-}
-
-#[derive(Args, Debug, Clone)]
 pub struct CmdImport {
     /// Files to import
     #[clap(num_args = 1..)]
@@ -58,7 +52,7 @@ pub enum CliCommands {
     Shuffle(CmdShuffle),
 
     /// Cleans up the links making it editable directly
-    Clean(CmdClean),
+    Clean,
 
     /// Copies all files so no mounting is required, does not reshuffle music
     Import(CmdImport),

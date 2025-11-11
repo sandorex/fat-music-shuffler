@@ -1,4 +1,3 @@
-use crate::cli::Cli;
 use crate::prelude::*;
 use crate::util::BlockDevice;
 use crate::{LABEL, LINK_DIR, MUSIC_DIR};
@@ -6,21 +5,17 @@ use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use std::io::prelude::*;
 
-pub fn format(args: Cli) -> Result<()> {
-    let mut target = if let Some(target) = args.target.as_ref() {
-        crate::lsblk::query_block_device(target)?
-    } else {
-        crate::ask_for_target(false, !args.show_all_disks)?
-    };
-
-    crate::confirm_prompt(format!(
-        "Formatting {} {target}, do you wish to proceed?",
-        if target.is_partition {
-            "partition"
-        } else {
-            "disk"
-        }
-    ))?;
+pub fn format(mut target: BlockDevice, interactive: bool) -> Result<()> {
+    if interactive {
+        crate::confirm_prompt(format!(
+            "Formatting {} {target}, do you wish to proceed?",
+            if target.is_partition {
+                "partition"
+            } else {
+                "disk"
+            }
+        ))?;
+    }
 
     // if its a disk format the whole disk
     if !target.is_partition {

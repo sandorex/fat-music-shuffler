@@ -1,22 +1,17 @@
-use crate::cli::CmdClean;
+use crate::util::BlockDevice;
 use crate::{DIRTY_FLAG_FILE, LINK_DIR, prelude::*};
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use std::io::Write;
 
-pub fn clean(args: CmdClean) -> Result<()> {
-    let data = crate::lsblk::query_block_device(&args.target)?;
-
-    if !data.is_partition() {
-        bail!("{:?} is not a partition", args.target);
+pub fn clean(target: BlockDevice, interactive: bool) -> Result<()> {
+    if interactive {
+        crate::confirm_prompt(format!(
+            "Cleaning partition {target}, do you wish to proceed?",
+        ))?;
     }
 
-    crate::confirm_partition(&data, "Cleaning".to_string())?;
-
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&data.path)?;
+    let file = target.open(false)?;
 
     let stream = BufStream::new(file);
 

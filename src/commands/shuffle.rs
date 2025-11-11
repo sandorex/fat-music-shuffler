@@ -1,4 +1,5 @@
-use crate::cli::{Cli, CmdShuffle};
+use crate::cli::CmdShuffle;
+use crate::util::BlockDevice;
 use crate::{DIRTY_FLAG_FILE, prelude::*};
 use crate::{LINK_DIR, MUSIC_DIR, MUSIC_EXT};
 use fatfs::{FileSystem, FsOptions};
@@ -7,16 +8,12 @@ use rand::seq::SliceRandom;
 use std::io::Write;
 use std::time::Duration;
 
-pub fn shuffle(args: &Cli, cmd_args: &CmdShuffle) -> Result<()> {
-    let target = if let Some(target) = args.target.as_ref() {
-        crate::lsblk::query_block_device(target)?
-    } else {
-        crate::ask_for_target(true, !args.show_all_disks)?
-    };
-
-    crate::confirm_prompt(format!(
-        "Shuffling music on partition {target}, do you wish to proceed?",
-    ))?;
+pub fn shuffle(target: BlockDevice, interactive: bool, cmd_args: CmdShuffle) -> Result<()> {
+    if interactive {
+        crate::confirm_prompt(format!(
+            "Shuffling music on partition {target}, do you wish to proceed?",
+        ))?;
+    }
 
     let file = target.open(false)?;
     let stream = BufStream::new(file);
@@ -68,10 +65,12 @@ pub fn shuffle(args: &Cli, cmd_args: &CmdShuffle) -> Result<()> {
 
         println!();
 
-        crate::confirm_prompt(format!(
-            "The songs would repeat {repeat_count} times to achieve duration of at least {}, do you wish to proceed?",
-            repeat_duration
-        ))?;
+        if interactive {
+            crate::confirm_prompt(format!(
+                "The songs would repeat {repeat_count} times to achieve duration of at least {}, do you wish to proceed?",
+                repeat_duration
+            ))?;
+        }
 
         repeat_count
     } else {

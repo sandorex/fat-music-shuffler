@@ -42,37 +42,6 @@ fn confirm_prompt(prompt: String) -> Result<()> {
     Ok(())
 }
 
-fn choose_option(option_count: usize, message: &str) -> Result<usize> {
-    let mut buffer = String::with_capacity(16);
-    let mut ans: String;
-
-    let index = loop {
-        print!("{message} (0-{}) ", option_count - 1);
-        std::io::stdout().flush()?;
-
-        buffer.clear();
-        std::io::stdin().read_line(&mut buffer)?;
-
-        ans = buffer.trim().to_string();
-
-        // allow user to abort by entering nothing
-        if ans.is_empty() {
-            bail!("User aborted");
-        }
-
-        match ans.parse::<usize>() {
-            Ok(x) if x < option_count => break x,
-
-            _ => {
-                println!("Invalid answer {ans:?}");
-                continue;
-            }
-        }
-    };
-
-    Ok(index)
-}
-
 fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<BlockDevice> {
     let devices = lsblk::query_all_block_devices()?;
 
@@ -144,11 +113,43 @@ fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<BlockDevice> {
 fn main() -> Result<()> {
     let args = cli::Cli::parse();
 
-    match &args.cmd {
-        cli::CliCommands::Format => commands::format(args)?,
-        cli::CliCommands::Shuffle(x) => commands::shuffle(&args, x)?,
-        // cli::CliCommands::Clean(x) => commands::clean(x)?,
-        _ => todo!(),
+    match args.cmd {
+        cli::CliCommands::Format => {
+            let target = if let Some(target) = args.target.as_ref() {
+                crate::lsblk::query_block_device(target)?
+            } else {
+                crate::ask_for_target(false, !args.show_all_disks)?
+            };
+
+            commands::format(target, true)?;
+        }
+        cli::CliCommands::Shuffle(x) => {
+            let target = if let Some(target) = args.target.as_ref() {
+                crate::lsblk::query_block_device(target)?
+            } else {
+                crate::ask_for_target(true, !args.show_all_disks)?
+            };
+
+            commands::shuffle(target, true, x)?;
+        }
+        cli::CliCommands::Clean => {
+            let target = if let Some(target) = args.target.as_ref() {
+                crate::lsblk::query_block_device(target)?
+            } else {
+                crate::ask_for_target(true, !args.show_all_disks)?
+            };
+
+            commands::clean(target, true)?;
+        }
+        cli::CliCommands::Import(x) => {
+            let target = if let Some(target) = args.target.as_ref() {
+                crate::lsblk::query_block_device(target)?
+            } else {
+                crate::ask_for_target(true, !args.show_all_disks)?
+            };
+
+            commands::import(target, x)?;
+        }
     }
 
     Ok(())

@@ -33,17 +33,3 @@ impl BlockDevice {
             .open(&self.path)
     }
 }
-
-// pub trait BlockDevice: Sized + Clone + Display {
-//     /// Check if block device is a partition
-//     fn is_partition(&self) -> bool;
-
-//     /// Is the device removable (SD Card, external SSD/HDD, etc..)
-//     fn is_removable(&self) -> bool;
-
-//     /// Get partitions if it is a disk
-//     fn get_partitions(&self) -> Option<Vec<&Self>>;
-
-//     /// Open the disk or partition as a file
-//     fn open(&self, readonly: bool) -> std::io::Result<std::fs::File>;
-// }
