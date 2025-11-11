@@ -16,20 +16,30 @@ The utility requires linux environment, so use a VM/WSL if you are not a linux u
    ...
    Formatting done, for any other commands please use "/dev/sdb1" as the device path
    ```
-3. Import the music by running `f32ms /dev/sdb1 import song1.mp3 ./album/ ...`
-4. Shuffle the music and repeat the songs until they fill at least 2 days worth of playtime, `f32ms /dev/sdb1 shuffle --repeat-fill '2 days'`
+3. Import the music by running
+   ```
+   f32ms /dev/sdb1 import song1.mp3 ./album/ ...
+   ```
+4. Shuffle the music and repeat the songs until they fill at least 2 days worth of playtime
+   ```
+   f32ms /dev/sdb1 shuffle --repeat-fill '2 days'
+   ```
 5. Insert into the mp3 player and enjoy!
 
-#### Manual Transfer
+#### Manually adding or removing files
 Manually transfering files is not that complicated but can take a while
 
 > **WARNING Make sure to 'safely eject' the device after transfering the files**
 
 Assuming you formatted the device already
-- Mount the device
-- Transfer all your MP3 files into `ORIG/`
-- Rename all the MP3 files so they all end with `.mp3.x` extension
-- Safely eject / remove the device
+1. Run following command to clean up the filesystem to allow modification, this will not delete your files or music only clear out `LINKS/` directory
+   ```
+   f32ms /dev/sdb1 clean
+   ```
+2. Mount the device
+3. Add / remove MP3 files in `ORIG/` directory
+4. Rename all the MP3 files so they all end with `.mp3.x` extension
+5. Safely eject / remove the device
 
 ### Why
 Most dumb MP3 players play music by the order they were transfered to the storage device, this means reordering requires deleting and transfering the files over again which is not great for a memory card
