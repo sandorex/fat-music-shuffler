@@ -32,7 +32,10 @@ pub fn format(mut target: BlockDevice, interactive: bool) -> Result<()> {
     format_partition(&target)?;
     setup(&target)?;
 
-    println!("Done!");
+    println!(
+        "Formatting done, for any other commands please use {:?} as the device path",
+        target.path
+    );
 
     Ok(())
 }
