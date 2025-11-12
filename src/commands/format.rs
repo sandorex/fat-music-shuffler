@@ -19,17 +19,26 @@ pub fn format(mut target: BlockDevice, interactive: bool) -> Result<()> {
 
     // if its a disk format the whole disk
     if !target.is_partition {
+        println!("Formatting the disk..");
         format_disk(&target.path)?;
 
-        // NOTE it should always be the first and only partition
-        target.path = format!("{}1", target.path);
+        // wait for the partition to be reloaded
+        std::thread::sleep(std::time::Duration::from_secs(1));
 
-        if std::fs::exists(&target.path).unwrap_or(false) {
-            bail!("Partition does not exist after formatting");
-        }
+        // re-query the device
+        target = crate::lsblk::query_block_device(&target.path)?;
+
+        // use first partition
+        target = target
+            .partitions
+            .and_then(|x| x.first().cloned())
+            .with_context(|| anyhow!("Could not find a partition after formatting"))?;
     }
 
+    println!("Formatting the partition..");
     format_partition(&target)?;
+
+    println!("Setting up the directory structure..");
     setup(&target)?;
 
     println!(
@@ -59,8 +68,12 @@ fn format_partition(target: &BlockDevice) -> Result<()> {
 
 fn format_disk(path: &str) -> Result<()> {
     let mut child = std::process::Command::new("sfdisk")
-        .args([path])
+        // always wipe partitions
+        .args(["--wipe", "always", "--wipe-partitions", "always", path])
         .stdin(std::process::Stdio::piped())
+        // TODO print on error and always in debug builds
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()?;
 
     let mut stdin = child
@@ -68,8 +81,8 @@ fn format_disk(path: &str) -> Result<()> {
         .take()
         .with_context(|| anyhow!("Unable to take child stdin"))?;
 
-    // NOTE: basically create MBR partition table and single FAT partition
-    stdin.write_all(b"label: dos\ntype=83")?;
+    // NOTE: basically create MBR partition table and single "W95 FAT32 (LBA)" partition
+    stdin.write_all(b"label: dos\ntype=c")?;
 
     drop(stdin);
 
@@ -79,8 +92,6 @@ fn format_disk(path: &str) -> Result<()> {
 }
 
 fn setup(target: &BlockDevice) -> Result<()> {
-    println!("Setting up the directory structure..");
-
     let file = target.open(false)?;
     let stream = BufStream::new(file);
 

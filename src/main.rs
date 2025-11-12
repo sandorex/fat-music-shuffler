@@ -150,6 +150,7 @@ fn main() -> Result<()> {
 
             commands::import(target, true, x)?;
         }
+        cli::CliCommands::Fix(x) => commands::fix(true, x)?,
     }
 
     Ok(())

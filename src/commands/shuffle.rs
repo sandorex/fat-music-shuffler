@@ -63,8 +63,6 @@ pub fn shuffle(target: BlockDevice, interactive: bool, cmd_args: CmdShuffle) -> 
             .ceil()
             .round() as usize;
 
-        println!();
-
         if interactive {
             crate::confirm_prompt(format!(
                 "The songs would repeat {repeat_count} times to achieve duration of at least {}, do you wish to proceed?",

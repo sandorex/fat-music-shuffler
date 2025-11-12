@@ -39,6 +39,21 @@ pub struct CmdImport {
     pub paths: Vec<PathBuf>,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct CmdFix {
+    /// Overwrite existing files
+    #[clap(short, long)]
+    pub overwrite: bool,
+
+    /// Output path
+    #[clap(required = true)]
+    pub output: PathBuf,
+
+    /// Files or directories to recursively scan for MP3 files to fix
+    #[clap(required = true, num_args = 1..)]
+    pub paths: Vec<PathBuf>,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum CliCommands {
     /// Formats device/partition (ERASES ALL DATA!)
@@ -56,6 +71,9 @@ pub enum CliCommands {
 
     /// Imports file into the filesystem without mounting it, will not overwrite files
     Import(CmdImport),
+
+    /// Fix common issues with music files
+    Fix(CmdFix),
 }
 
 #[cfg(test)]

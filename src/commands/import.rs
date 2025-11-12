@@ -1,36 +1,18 @@
 use crate::cli::CmdImport;
-use crate::util::BlockDevice;
+use crate::util::{BlockDevice, find_mp3_files};
 use crate::{MUSIC_DIR, prelude::*};
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use std::io::Write;
 use std::path::PathBuf;
 
-fn list_files(vec: &mut Vec<PathBuf>, path: PathBuf) -> std::io::Result<()> {
-    if path.is_dir() {
-        let paths = std::fs::read_dir(&path)?;
-        for path_result in paths {
-            let full_path = path_result?.path();
-            list_files(vec, full_path)?;
-        }
-    } else {
-        // only collect MP3 files
-        if let Some(ext) = path.extension() {
-            if ext == "mp3" {
-                vec.push(path);
-            }
-        }
-    }
-
-    Ok(())
-}
-
 pub fn import(target: BlockDevice, interactive: bool, args: CmdImport) -> Result<()> {
     println!("Scanning for files..");
-    let mut files = vec![];
+    let mut files: Vec<PathBuf> = vec![];
 
     for path in args.paths {
-        list_files(&mut files, path.clone()).with_context(|| anyhow!("Error scanning {path:?}"))?;
+        find_mp3_files(&mut files, path.clone())
+            .with_context(|| anyhow!("Error scanning {path:?}"))?;
     }
 
     if interactive {
@@ -55,7 +37,13 @@ pub fn import(target: BlockDevice, interactive: bool, args: CmdImport) -> Result
         // add the require extension
         let name = format!(
             "{}{}",
-            path.file_name().unwrap().to_string_lossy(),
+            // NOTE: filtering only ascii characters at FAT32 does not like unicode
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .chars()
+                .filter(|c| c.is_ascii())
+                .collect::<String>(),
             crate::MUSIC_EXT
         );
 
