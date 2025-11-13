@@ -13,7 +13,8 @@ use clap::Parser;
 use prelude::*;
 use std::io::prelude::*;
 
-const LABEL: [u8; 11] = [b'f', b'a', b't', b'3', b'2', b'm', b's', 0, 0, 0, 0];
+/// Partition label, something recognizable so you don't mess with it
+const LABEL: [u8; 11] = [b'F', b'A', b'T', b'3', b'2', b'M', b'S', 0, 0, 0, 0];
 
 /// Directory containing the original music files
 const MUSIC_DIR: &str = "ORIG";
@@ -132,14 +133,14 @@ fn main() -> Result<()> {
 
             commands::shuffle(target, true, x)?;
         }
-        cli::CliCommands::Clean => {
+        cli::CliCommands::Clean(x) => {
             let target = if let Some(target) = args.target.as_ref() {
                 crate::lsblk::query_block_device(target)?
             } else {
                 crate::ask_for_target(true, !args.show_all_disks)?
             };
 
-            commands::clean(target, true)?;
+            commands::clean(target, true, x)?;
         }
         cli::CliCommands::Import(x) => {
             let target = if let Some(target) = args.target.as_ref() {

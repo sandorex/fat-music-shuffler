@@ -301,6 +301,7 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
 
         // NOTE this should at least make the OS warn the user before deleting any links
         target_attrs.set(FileAttributes::SYSTEM, true);
+        target_attrs.set(FileAttributes::READ_ONLY, true);
 
         let r = self.check_for_existence(name, Some(false))?;
         let mut sfn_entry = match r {

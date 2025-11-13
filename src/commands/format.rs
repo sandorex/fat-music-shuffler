@@ -95,18 +95,20 @@ fn setup(target: &BlockDevice) -> Result<()> {
     let file = target.open(false)?;
     let stream = BufStream::new(file);
 
-    println!("Creating required files..");
-
     // create the structure
     let fs = FileSystem::new(stream, FsOptions::new())?;
-    let root_dir = fs.root_dir();
-    root_dir.create_dir(MUSIC_DIR)?;
-    root_dir.create_dir(LINK_DIR)?;
-
     {
-        let mut readme = root_dir.create_file("README.txt")?;
-        readme.write(crate::text::README.as_bytes())?;
+        let root_dir = fs.root_dir();
+        root_dir.create_dir(MUSIC_DIR)?;
+        root_dir.create_dir(LINK_DIR)?;
+
+        {
+            let mut readme = root_dir.create_file("README.txt")?;
+            readme.write(crate::text::README.as_bytes())?;
+        }
     }
+
+    fs.unmount()?;
 
     Ok(())
 }
