@@ -95,8 +95,6 @@ fn setup(target: &BlockDevice) -> Result<()> {
     let file = target.open(false)?;
     let stream = BufStream::new(file);
 
-    println!("Creating required files..");
-
     // create the structure
     let fs = FileSystem::new(stream, FsOptions::new())?;
     let root_dir = fs.root_dir();

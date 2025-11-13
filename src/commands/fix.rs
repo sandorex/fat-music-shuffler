@@ -7,9 +7,7 @@ use std::{
 };
 
 pub fn process_file(input: &Path, output: &Path, overwrite: bool) -> Result<()> {
-    const THRESHOLD: &str = "0";
-
-    // skip existing files
+    // skip existing files if not overwriting
     if !overwrite && output.exists() {
         return Ok(());
     }
@@ -22,11 +20,16 @@ pub fn process_file(input: &Path, output: &Path, overwrite: bool) -> Result<()> 
             input.to_str().unwrap(),
             "-map",
             "a",
+            // apply the replaygain
+            "-filter:a",
+            "volume=replaygain=track",
+            // remove metadata
             "-map_metadata",
             "-1",
+            // remove silence at beginning and end
             "-af",
+            "silenceremove=start_periods=1:start_duration=1:start_threshold=-60dB:detection=peak,aformat=dblp,areverse,silenceremove=start_periods=1:start_duration=1:start_threshold=-60dB:detection=peak,aformat=dblp,areverse",
         ])
-        .arg(format!("silenceremove=start_periods=1:start_threshold={THRESHOLD}:start_silence=0:stop_periods=1:stop_threshold={THRESHOLD}:stop_silence=0:detection=peak"))
         .arg(output.to_str().unwrap())
         .output()
         .with_context(|| anyhow!("Could not run ffmpeg"))?;
@@ -36,6 +39,27 @@ pub fn process_file(input: &Path, output: &Path, overwrite: bool) -> Result<()> 
             "Failed to process {input:?}, exit code {:?}",
             cmd.status.code()
         )
+    }
+
+    // TODO check if duration has not reduced by more than 5%
+    let orig = mp3_duration::from_path(input)
+        .with_context(|| anyhow!("Could not read duration from input {input:?}"))?;
+
+    let out = mp3_duration::from_path(output)
+        .with_context(|| anyhow!("Could not read duration from output {output:?}"))?;
+
+    // the output may be entirely broken
+    if out.as_secs_f64() == 0.0 {
+        println!("\rWarning: output file {output:?} has length of 0 seconds!");
+        return Ok(());
+    }
+
+    let diff = orig.as_secs_f64() - out.as_secs_f64();
+    let procentage = (diff / out.as_secs_f64()) * 100.0;
+
+    // check if file duration has changed a lot
+    if procentage >= 80.00 {
+        println!("\rWarning: output file {output:?} duration was reduced by over 80%!");
     }
 
     Ok(())

@@ -33,12 +33,20 @@ pub struct CmdShuffle {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct CmdClean {
+    /// Remove songs as well as links
+    #[clap(long, short)]
+    pub songs: bool,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct CmdImport {
     /// Files or directories to recursively scan for MP3 files to import
     #[clap(required = true, num_args = 1..)]
     pub paths: Vec<PathBuf>,
 }
 
+// TODO rename to optimize
 #[derive(Args, Debug, Clone)]
 pub struct CmdFix {
     /// Overwrite existing files
@@ -67,7 +75,7 @@ pub enum CliCommands {
     Shuffle(CmdShuffle),
 
     /// Cleans up the links making it editable directly
-    Clean,
+    Clean(CmdClean),
 
     /// Imports file into the filesystem without mounting it, will not overwrite files
     Import(CmdImport),

@@ -41,6 +41,18 @@ Assuming you formatted the device already
 4. Rename all the MP3 files so they all end with `.mp3.x` extension
 5. Safely eject / remove the device
 
+### Preparing Music
+Preparing music for dumb MP3 players is a chore but it really makes a difference
+
+For more details about the flags read [silenceremove](https://ffmpeg.org/ffmpeg-filters.html#silenceremove)
+
+Following command does the following:
+- Remove silence at beginning or end of the file
+- Remove cover files to reduce size
+```
+ffmpeg -i input.mp3 -map a -af "silenceremove=start_periods=1:start_threshold=-60dB:start_silence=0:stop_periods=1:stop_threshold=-60dB:stop_silence=0:detection=peak" output.mp3
+```
+
 ### Why
 Most dumb MP3 players play music by the order they were transfered to the storage device, this means reordering requires deleting and transfering the files over again which is not great for a memory card
 

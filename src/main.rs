@@ -132,14 +132,14 @@ fn main() -> Result<()> {
 
             commands::shuffle(target, true, x)?;
         }
-        cli::CliCommands::Clean => {
+        cli::CliCommands::Clean(x) => {
             let target = if let Some(target) = args.target.as_ref() {
                 crate::lsblk::query_block_device(target)?
             } else {
                 crate::ask_for_target(true, !args.show_all_disks)?
             };
 
-            commands::clean(target, true)?;
+            commands::clean(target, true, x)?;
         }
         cli::CliCommands::Import(x) => {
             let target = if let Some(target) = args.target.as_ref() {
