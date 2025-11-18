@@ -1,0 +1,16 @@
+[package]
+name = "f32ms"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+fatfs.workspace = true
+fscommon.workspace = true
+humantime.workspace = true
+mp3-duration.workspace = true
+nix.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true

@@ -1,12 +1,11 @@
-[package]
-name = "f32ms"
-version = "1.0.0"
-edition = "2024"
+[workspace]
+resolver = "3"
+members = ["f32ms-cli", "f32ms-common", "f32ms-gui"]
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.51", features = [ "derive" ] }
-fatfs = { path = "fatfs" }
+fatfs = { path = "./fatfs" }
 fscommon = "0.1.1"
 humantime = "2.3.0"
 mp3-duration = "0.1.10"

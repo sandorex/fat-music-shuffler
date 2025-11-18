@@ -35,7 +35,14 @@
       };
 
       devShells.${system}.default = pkgs.mkShell {
-        nativeBuildInputs = with pkgs; [ git toolchain ];
+        nativeBuildInputs = with pkgs; [
+          git
+          toolchain
+          qt6.qtbase
+          qt6.qtwayland
+          qt6.qtdeclarative
+          stdenv.cc.cc.lib
+        ];
 
         inherit CARGO_BUILD_TARGET VERGEN_IDEMPOTENT VERGEN_GIT_SHA;
       };
