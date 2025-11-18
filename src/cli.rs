@@ -71,7 +71,7 @@ pub enum CliCommands {
     #[cfg_attr(target_os = "windows", clap(skip))]
     Format,
 
-    /// Shuffle imported music
+    /// Shuffle music
     Shuffle(CmdShuffle),
 
     /// Cleans up the links making it editable directly
