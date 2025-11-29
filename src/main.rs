@@ -151,7 +151,7 @@ fn main() -> Result<()> {
 
             commands::import(target, true, x)?;
         }
-        cli::CliCommands::Fix(x) => commands::fix(true, x)?,
+        cli::CliCommands::Process(x) => commands::process(true, x)?,
     }
 
     Ok(())

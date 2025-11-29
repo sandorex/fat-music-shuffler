@@ -46,12 +46,17 @@ pub struct CmdImport {
     pub paths: Vec<PathBuf>,
 }
 
-// TODO rename to optimize
 #[derive(Args, Debug, Clone)]
-pub struct CmdFix {
+pub struct CmdProcess {
     /// Overwrite existing files
     #[clap(short, long)]
     pub overwrite: bool,
+
+    /// Adjust volume of files (in decibels)
+    ///
+    /// +/-10dB => doubles or halves the volume
+    #[clap(short, long, allow_negative_numbers = true)]
+    pub volume_adjustment: Option<f64>,
 
     /// Output path
     #[clap(required = true)]
@@ -80,8 +85,10 @@ pub enum CliCommands {
     /// Imports file into the filesystem without mounting it, will not overwrite files
     Import(CmdImport),
 
-    /// Fix common issues with music files
-    Fix(CmdFix),
+    /// Processes files using ffmpeg to apply some adjustments (recommended)
+    ///
+    /// All options have a description but always test if the files are playable on a computer!
+    Process(CmdProcess),
 }
 
 #[cfg(test)]

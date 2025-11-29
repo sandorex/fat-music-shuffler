@@ -10,5 +10,5 @@ pub use clean::clean;
 mod import;
 pub use import::import;
 
-mod fix;
-pub use fix::fix;
+mod process;
+pub use process::process;

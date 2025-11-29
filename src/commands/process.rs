@@ -1,4 +1,4 @@
-use crate::cli::CmdFix;
+use crate::cli::CmdProcess;
 use crate::prelude::*;
 use crate::util::find_mp3_files;
 use std::{
@@ -6,12 +6,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub fn process_file(input: &Path, output: &Path, overwrite: bool) -> Result<()> {
+fn process_file(input: &Path, output: &Path, args: &CmdProcess) -> Result<()> {
     // skip existing files if not overwriting
-    if !overwrite && output.exists() {
+    if !args.overwrite && output.exists() {
         return Ok(());
     }
 
+    // TODO run status in debug builds!
     let cmd = std::process::Command::new("ffmpeg")
         .args([
             "-nostdin",
@@ -20,17 +21,30 @@ pub fn process_file(input: &Path, output: &Path, overwrite: bool) -> Result<()> 
             input.to_str().unwrap(),
             "-map",
             "a",
-            // apply the replaygain
             "-filter:a",
-            "volume=replaygain=track",
-            // remove metadata
+            // you can only specify filter once so one big huge string
+            &[
+                // remove silence at the start
+                "silenceremove=start_periods=1:start_duration=1:start_threshold=-60dB:detection=peak",
+                "aformat=dblp",
+
+                // remove silence at the end
+                "areverse",
+                "silenceremove=start_periods=1:start_duration=1:start_threshold=-60dB:detection=peak",
+                "aformat=dblp",
+                "areverse",
+
+                // apply replaygain
+                "volume=replaygain=track",
+
+                // apply volume adjustment
+                &format!("volume={}dB", args.volume_adjustment.unwrap_or(0.0)),
+            ].join(","),
+            // remove metadata (including replay_gain)
             "-map_metadata",
             "-1",
-            // remove silence at beginning and end
-            "-af",
-            "silenceremove=start_periods=1:start_duration=1:start_threshold=-60dB:detection=peak,aformat=dblp,areverse,silenceremove=start_periods=1:start_duration=1:start_threshold=-60dB:detection=peak,aformat=dblp,areverse",
+            output.to_str().unwrap()
         ])
-        .arg(output.to_str().unwrap())
         .output()
         .with_context(|| anyhow!("Could not run ffmpeg"))?;
 
@@ -64,11 +78,11 @@ pub fn process_file(input: &Path, output: &Path, overwrite: bool) -> Result<()> 
     Ok(())
 }
 
-pub fn fix(interactive: bool, args: CmdFix) -> Result<()> {
+pub fn process(interactive: bool, args: CmdProcess) -> Result<()> {
     println!("Scanning for files..");
     let mut files: Vec<PathBuf> = vec![];
 
-    for path in args.paths {
+    for path in &args.paths {
         find_mp3_files(&mut files, path.clone())
             .with_context(|| anyhow!("Error scanning {path:?}"))?;
     }
@@ -95,7 +109,7 @@ pub fn fix(interactive: bool, args: CmdFix) -> Result<()> {
         let _ = std::io::stdout().flush();
 
         let output = args.output.join(path.file_name().unwrap());
-        process_file(path, output.as_path(), args.overwrite)?;
+        process_file(path, output.as_path(), &args)?;
     }
 
     println!();
