@@ -3,6 +3,8 @@ Simple utility for managing music for dumb MP3 players that cannot shuffle on th
 
 It works by using [hardlinks](https://en.wikipedia.org/wiki/Hard_link), which are not supported by FAT32 so corruption warnings will be present
 
+Simple youtube demo can be found [here](https://www.youtube.com/watch?v=peS-5MB-E8s)
+
 ### Guide
 The utility requires linux environment, so use a VM/WSL if you are not a linux user
 
