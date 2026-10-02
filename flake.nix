@@ -26,6 +26,14 @@
       # make vergen_git2 happy
       VERGEN_IDEMPOTENT = "1";
       VERGEN_GIT_SHA = if (self ? "rev") then (builtins.substring 0 7 self.rev) else "nix-dirty";
+
+      plyLibs = with pkgs; [
+        libx11
+        libxi
+        libGL
+        alsa-lib
+        libxkbcommon
+      ];
     in
     {
       packages.${system}.default = naersk'.buildPackage {
@@ -35,7 +43,16 @@
       };
 
       devShells.${system}.default = pkgs.mkShell {
-        nativeBuildInputs = with pkgs; [ git toolchain ];
+        nativeBuildInputs = with pkgs; [
+          git
+          toolchain
+          pkg-config
+        ] ++ plyLibs;
+
+        # required to run unpatched binary
+        shellHook = ''
+          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath plyLibs}:$LD_LIBRARY_PATH"
+        '';
 
         inherit CARGO_BUILD_TARGET VERGEN_IDEMPOTENT VERGEN_GIT_SHA;
       };
