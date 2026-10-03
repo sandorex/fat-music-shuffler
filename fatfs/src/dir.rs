@@ -4,6 +4,7 @@ use core::num;
 use core::str;
 #[cfg(feature = "lfn")]
 use core::{iter, slice};
+use std::collections::HashMap;
 
 use crate::dir_entry::{
     DirEntry, DirEntryData, DirFileEntryData, DirLfnEntryData, FileAttributes, ShortName, DIR_ENTRY_SIZE,
@@ -275,63 +276,110 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         }
     }
 
-    /// Creates a hardlink, basically a file entry that points to an existing file
-    pub fn create_hardlink(&self, path: &str, target_dir: &Self, target: &str) -> Result<(), Error<IO::Error>> {
-        let (name, rest_opt) = split_path(path);
-        if let Some(rest) = rest_opt {
-            return self
-                .find_entry(name, Some(true), None)?
-                .to_dir()
-                .create_hardlink(rest, target_dir, target);
-        }
+    pub fn create_hardlinks(&self, paths: &Vec<(String, String)>, target_dir: &Self) -> Result<(), Error<IO::Error>> {
+        // cache the target entries
+        let cached_targets = {
+            let mut entries: HashMap<&str, (Option<u32>, FileAttributes, u32)> = HashMap::new();
 
-        // find the target
-        let target_entry = target_dir.find_entry(target, None, None)?;
+            for (_, target) in paths {
+                let target_entry = target_dir.find_entry(target, None, None)?;
 
-        // target cannot be a directory
-        if target_entry.is_dir() {
-            error!("Cannot hardlink a directory");
-            return Err(Error::InvalidInput);
-        }
+                // target cannot be a directory
+                if target_entry.is_dir() {
+                    error!("Cannot hardlink a directory");
+                    return Err(Error::InvalidInput);
+                }
 
-        // gather metadata from target
-        let target_first_cluster = target_entry.first_cluster();
-        let mut target_attrs = target_entry.attributes();
-        let target_size = target_entry.len();
+                // gather metadata from target
+                let target_first_cluster = target_entry.first_cluster();
+                let mut target_attrs = target_entry.attributes();
+                let target_size = {
+                    // TODO i do not know if this is correct
+                    let size = target_entry.len();
+                    if size > u32::MAX as u64 {
+                        u32::MAX
+                    } else {
+                        size as u32
+                    }
+                };
 
-        // NOTE this should at least make the OS warn the user before deleting any links
-        target_attrs.set(FileAttributes::SYSTEM, true);
-        target_attrs.set(FileAttributes::READ_ONLY, true);
+                // NOTE this should at least make the OS warn the user before deleting any links
+                target_attrs.set(FileAttributes::SYSTEM, true);
+                target_attrs.set(FileAttributes::READ_ONLY, true);
 
-        let r = self.check_for_existence(name, Some(false))?;
-        let mut sfn_entry = match r {
-            // file does not exist create it
-            DirEntryOrShortName::ShortName(short_name) => {
-                self.create_sfn_entry(short_name, target_attrs, target_first_cluster)
+                entries.insert(target, (target_first_cluster, target_attrs, target_size));
             }
 
-            // file exists, override it
-            DirEntryOrShortName::DirEntry(e) => {
-                self.create_sfn_entry(e.raw_short_name().clone(), target_attrs, target_first_cluster)
+            entries
+        };
+
+        // let mut entries: Vec<(&str, DirFileEntryData, LfnBuffer)> = vec![];
+        let mut entries: Vec<(DirFileEntryData, LfnBuffer)> = vec![];
+        let mut slots = 0u32;
+
+        for (link_name, target_name) in paths {
+            // validate name in advance
+            validate_long_name(link_name)?;
+
+            let (target_first_cluster, target_attrs, target_size) = cached_targets.get(target_name.as_str()).unwrap();
+
+            let lfn_encoded = Self::encode_lfn_utf16(link_name);
+            let lfn_len = lfn_encoded.len() as u32;
+
+            // calculate needed entry slots (one is always needed for SFN)
+            const LFN_MAX_CHARS: u32 = 13;
+            slots += 1 + if lfn_len > 0 {
+                // TODO what the hell is this 12 magic number?
+                (lfn_len + 12) / LFN_MAX_CHARS
+            } else {
+                0
+            };
+
+            let r = self.check_for_existence(link_name, Some(false))?;
+            let mut sfn_entry = match r {
+                // file does not exist create it
+                DirEntryOrShortName::ShortName(short_name) => {
+                    self.create_sfn_entry(short_name, *target_attrs, *target_first_cluster)
+                }
+
+                // file exists, override it
+                DirEntryOrShortName::DirEntry(e) => {
+                    self.create_sfn_entry(e.raw_short_name().clone(), *target_attrs, *target_first_cluster)
+                }
+            };
+
+            sfn_entry.set_size(*target_size);
+
+            entries.push((sfn_entry, lfn_encoded));
+        }
+
+        // preallocate entries
+        let mut stream = self.find_free_entries(slots).unwrap();
+
+        for (sfn_entry, lfn_utf16) in entries {
+            // get short name checksum
+            let lfn_chsum = lfn_checksum(&sfn_entry.name);
+
+            // create LFN entries generator
+            let lfn_iter = LfnEntriesGenerator::new(lfn_utf16.as_ucs2_units(), lfn_chsum);
+
+            // NOTE the space was already preallocated above so just write it
+            // write the lfn entries before the sfn entry
+            for lfn_entry in lfn_iter {
+                lfn_entry.serialize(&mut stream)?;
             }
-        };
 
-        sfn_entry.set_created(target_entry.created());
-        sfn_entry.set_accessed(target_entry.accessed());
-        sfn_entry.set_modified(target_entry.modified());
-
-        // copy size (truncate to u32 if necessary)
-        let size_u32 = if target_size > u32::MAX as u64 {
-            u32::MAX
-        } else {
-            target_size as u32
-        };
-
-        sfn_entry.set_size(size_u32);
-
-        self.write_entry(name, sfn_entry)?;
+            sfn_entry.serialize(&mut stream)?;
+        }
 
         Ok(())
+    }
+
+    // TODO this is just until i rework the main logic to use `create_hardlinks`
+    /// Creates a hardlink, basically a file entry that points to an existing file
+    #[deprecated(note = "use `create_hardlinks` instead")]
+    pub fn create_hardlink(&self, path: &str, target_dir: &Self, target: &str) -> Result<(), Error<IO::Error>> {
+        self.create_hardlinks(&vec![(path.to_string(), target.to_string())], target_dir)
     }
 
     /// Creates new directory or opens existing.
