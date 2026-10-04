@@ -26,10 +26,12 @@ pub struct CmdShuffle {
     ///
     /// This is a hack to implement quasi-shuffle by repeating everything but
     /// in different predefined order
-    ///
-    /// This feature can create A LOT of links so beware it can take a while
     #[clap(long)]
     pub repeat_fill: Option<Duration>,
+
+    /// Repeat all songs in different order this many times
+    #[clap(long, conflicts_with = "repeat_fill")]
+    pub repeat: Option<u16>,
 }
 
 #[derive(Args, Debug, Clone)]
