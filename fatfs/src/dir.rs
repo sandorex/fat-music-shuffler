@@ -358,7 +358,7 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
 
         for (sfn_entry, lfn_utf16) in entries {
             // get short name checksum
-            let lfn_chsum = lfn_checksum(&sfn_entry.name);
+            let lfn_chsum = lfn_checksum(&sfn_entry.name());
 
             // create LFN entries generator
             let lfn_iter = LfnEntriesGenerator::new(lfn_utf16.as_ucs2_units(), lfn_chsum);
