@@ -23,10 +23,6 @@
       # build for musl by default
       CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
 
-      # make vergen_git2 happy
-      VERGEN_IDEMPOTENT = "1";
-      VERGEN_GIT_SHA = if (self ? "rev") then (builtins.substring 0 7 self.rev) else "nix-dirty";
-
       plyLibs = with pkgs; [
         libx11
         libxi
@@ -39,7 +35,7 @@
       packages.${system}.default = naersk'.buildPackage {
         src = ./.;
 
-        inherit CARGO_BUILD_TARGET VERGEN_IDEMPOTENT VERGEN_GIT_SHA;
+        inherit CARGO_BUILD_TARGET;
       };
 
       devShells.${system}.default = pkgs.mkShell {
@@ -54,7 +50,7 @@
           export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath plyLibs}:$LD_LIBRARY_PATH"
         '';
 
-        inherit CARGO_BUILD_TARGET VERGEN_IDEMPOTENT VERGEN_GIT_SHA;
+        inherit CARGO_BUILD_TARGET;
       };
     };
 }
