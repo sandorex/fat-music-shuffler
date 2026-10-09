@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::util::BlockDevice;
+use crate::util::{Disk, DiskOrPartition, Partition};
 use serde::Deserialize;
 use std::fmt::Display;
 
@@ -16,15 +16,20 @@ enum BlockDeviceType {
 struct BlockDeviceInfo {
     pub path: String,
 
-    pub label: Option<String>,
-
     #[serde(rename = "rm")]
     pub removable: bool,
 
     pub model: Option<String>,
 
+    pub serial: Option<String>,
+
+    pub label: Option<String>,
+    pub partlabel: Option<String>,
+
     #[serde(rename = "type")]
     pub dev_type: BlockDeviceType,
+
+    pub mountpoints: Vec<String>,
 
     pub size: String,
 
@@ -50,6 +55,30 @@ impl BlockDeviceInfo {
             BlockDeviceType::Disk => false,
         }
     }
+
+    fn parse_disk(&self) -> Disk {
+        Disk {
+            path: self.path.clone(),
+            model: self.model.as_ref().map(|x| x.trim().to_string()),
+            serial: self.serial.as_ref().map(|x| x.trim().to_string()),
+            removeable: self.removable,
+            size: self.size.clone(),
+            partitions: self.children
+                .as_ref()
+                .map(|x| x.into_iter().map(|y| y.parse_partition()).collect())
+                .unwrap_or_default(),
+        }
+    }
+
+    fn parse_partition(&self) -> Partition {
+        Partition {
+            path: self.path.clone(),
+            removeable: self.removable,
+            size: self.size.clone(),
+            mounted: !self.mountpoints.is_empty(),
+            label: self.label.as_ref().or(self.partlabel.as_ref()).cloned(),
+        }
+    }
 }
 
 impl Display for BlockDeviceInfo {
@@ -71,24 +100,19 @@ impl Display for BlockDeviceInfo {
     }
 }
 
-impl Into<BlockDevice> for &BlockDeviceInfo {
-    fn into(self) -> BlockDevice {
-        BlockDevice {
-            path: self.path.clone(),
-            removable: self.removable,
-            is_partition: self.is_partition(),
-            repr: format!("{}", self),
-            partitions: self
-                .children
-                .as_ref()
-                .map(|x| x.iter().map(|y| y.into()).collect()),
+impl Into<DiskOrPartition> for &BlockDeviceInfo {
+    fn into(self) -> DiskOrPartition {
+        if self.is_partition() {
+            DiskOrPartition::Partition(self.parse_partition())
+        } else {
+            DiskOrPartition::Disk(self.parse_disk())
         }
     }
 }
 
-impl Into<BlockDevice> for BlockDeviceInfo {
-    fn into(self) -> BlockDevice {
-        Into::<BlockDevice>::into(&self)
+impl Into<DiskOrPartition> for BlockDeviceInfo {
+    fn into(self) -> DiskOrPartition {
+        Into::<DiskOrPartition>::into(&self)
     }
 }
 
@@ -114,21 +138,33 @@ fn query(path: Option<&str>) -> Result<Vec<BlockDeviceInfo>> {
     Ok(BlockDeviceInfo::parse(&stdout)?)
 }
 
-pub fn query_block_device(path: &str) -> Result<BlockDevice> {
+pub fn query_block_device(path: &str) -> Result<DiskOrPartition> {
     if !std::fs::exists(path).unwrap_or(false) {
         bail!("Block device {path:?} does not exist");
     }
 
     query(Some(path))?
         .first()
-        .map(|x| x.into())
+        .map(Into::<DiskOrPartition>::into)
         .with_context(|| anyhow!("lsblk returned no devices"))
 }
 
-pub fn query_all_block_devices() -> Result<Vec<BlockDevice>> {
+pub fn query_all_disks() -> Result<Vec<Disk>> {
     query(None).map(|x| {
         x.iter()
-            .map(|y| Into::<BlockDevice>::into(y))
+            .map(|y| y.parse_disk())
             .collect::<Vec<_>>()
     })
+}
+
+/// Returns both partitions and disks but disks go first
+pub fn query_all_block_devices() -> Result<Vec<DiskOrPartition>> {
+    Ok(query_all_disks()?
+        .into_iter()
+        .fold(vec![], |mut acc: Vec<DiskOrPartition>, mut x| {
+            let partitions = std::mem::take(&mut x.partitions);
+            acc.push(x.into());
+            acc.extend(partitions.into_iter().map(|part| part.into()));
+            acc
+        }))
 }

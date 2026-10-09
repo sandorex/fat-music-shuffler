@@ -4,11 +4,14 @@ mod lsblk;
 mod text;
 mod util;
 
+#[cfg(feature = "gui")]
+mod gui;
+
 pub mod prelude {
     pub use anyhow::{Context, Result, anyhow, bail};
 }
 
-use crate::util::BlockDevice;
+use crate::util::DiskOrPartition;
 use clap::Parser;
 use prelude::*;
 use std::io::prelude::*;
@@ -43,21 +46,21 @@ fn confirm_prompt(prompt: String) -> Result<()> {
     Ok(())
 }
 
-fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<BlockDevice> {
+// TODO make two functions that return either only Disks or Partitions so i dont have to unpack
+// DiskOrPartition
+fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<DiskOrPartition> {
     let devices = lsblk::query_all_block_devices()?;
 
-    let find_device = |path: &str| -> Option<&BlockDevice> {
+    let find_device = |path: &str| -> Option<DiskOrPartition> {
         for device in &devices {
-            if device.path == path {
-                return Some(device);
+            if device.path() == path {
+                return Some(device.clone());
             }
 
-            if let Some(found) = device
-                .partitions
-                .as_ref()
-                .and_then(|x| x.iter().find(|y| y.path == path))
-            {
-                return Some(found);
+            if let DiskOrPartition::Disk(disk) = &device {
+                for partition in &disk.partitions {
+                    return Some(DiskOrPartition::Partition(partition.clone()))
+                }
             }
         }
 
@@ -66,13 +69,13 @@ fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<BlockDevice> {
 
     for device in &devices {
         // hide non-removable if requested
-        if only_removable && !device.removable {
+        if only_removable && !device.removeable() {
             continue;
         }
 
         println!("{device}");
-        if let Some(partitions) = &device.partitions {
-            for part in partitions {
+        if let DiskOrPartition::Disk(disk) = &device {
+            for part in &disk.partitions {
                 println!("  {part}");
             }
         }
@@ -96,7 +99,7 @@ fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<BlockDevice> {
         }
 
         if let Some(device) = find_device(&ans) {
-            if no_disk && !device.is_partition {
+            if no_disk && !matches!(device, DiskOrPartition::Partition(_)) {
                 println!("Invalid path, {ans:?} is not a partition");
                 continue;
             }
@@ -111,9 +114,7 @@ fn ask_for_target(no_disk: bool, only_removable: bool) -> Result<BlockDevice> {
     Ok(device.clone())
 }
 
-fn main() -> Result<()> {
-    let args = cli::Cli::parse();
-
+pub fn handle_cli(args: cli::Cli) -> Result<()> {
     match args.cmd {
         cli::CliCommands::Format => {
             let target = if let Some(target) = args.target.as_ref() {
@@ -131,6 +132,8 @@ fn main() -> Result<()> {
                 crate::ask_for_target(true, !args.show_all_disks)?
             };
 
+            let DiskOrPartition::Partition(target) = target else { panic!("Target is not a partition") };
+
             commands::shuffle(target, true, x)?;
         }
         cli::CliCommands::Clean(x) => {
@@ -139,6 +142,8 @@ fn main() -> Result<()> {
             } else {
                 crate::ask_for_target(true, !args.show_all_disks)?
             };
+
+            let DiskOrPartition::Partition(target) = target else { panic!("Target is not a partition") };
 
             commands::clean(target, true, x)?;
         }
@@ -149,6 +154,8 @@ fn main() -> Result<()> {
                 crate::ask_for_target(true, !args.show_all_disks)?
             };
 
+            let DiskOrPartition::Partition(target) = target else { panic!("Target is not a partition") };
+
             commands::import(target, true, x)?;
         }
         cli::CliCommands::Process(x) => commands::process(true, x)?,
@@ -156,3 +163,14 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(not(feature = "gui"))]
+fn main() -> Result<()> {
+    let args = cli::Cli::parse();
+
+    handle_cli(args)
+}
+
+#[cfg(feature = "gui")]
+pub use gui::main;
+

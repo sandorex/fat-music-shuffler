@@ -24,11 +24,15 @@
       CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
 
       plyLibs = with pkgs; [
-        libx11
-        libxi
         libGL
+        wayland
         alsa-lib
         libxkbcommon
+        libx11
+        libxcursor
+        libxrandr
+        libxi
+        libglvnd
       ];
     in
     {

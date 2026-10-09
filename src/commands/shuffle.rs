@@ -1,11 +1,11 @@
-use crate::{DIRTY_FLAG_FILE, LINK_DIR, MUSIC_DIR, MUSIC_EXT, cli::CmdShuffle, prelude::*, util::BlockDevice};
+use crate::{DIRTY_FLAG_FILE, LINK_DIR, MUSIC_DIR, MUSIC_EXT, cli::CmdShuffle, prelude::*, util::Partition};
 use fatfs::{FileSystem, FsOptions, IoBase, OemCpConverter, ReadWriteSeek, TimeProvider};
 use fscommon::BufStream;
 use rand::seq::SliceRandom;
 use std::io::Write;
 use std::time::Duration;
 
-pub fn shuffle(target: BlockDevice, interactive: bool, cmd_args: CmdShuffle) -> Result<()> {
+pub fn shuffle(target: Partition, interactive: bool, cmd_args: CmdShuffle) -> Result<()> {
     if interactive {
         crate::confirm_prompt(format!(
             "Shuffling music on partition {target}, do you wish to proceed?",

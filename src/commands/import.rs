@@ -1,12 +1,12 @@
 use crate::cli::CmdImport;
-use crate::util::{BlockDevice, find_mp3_files};
+use crate::util::{Partition, find_mp3_files};
 use crate::{MUSIC_DIR, MUSIC_EXT, prelude::*};
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
-pub fn import(target: BlockDevice, interactive: bool, args: CmdImport) -> Result<()> {
+pub fn import(target: Partition, interactive: bool, args: CmdImport) -> Result<()> {
     println!("Scanning for files..");
     let mut files: Vec<PathBuf> = vec![];
 

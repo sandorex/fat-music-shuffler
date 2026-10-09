@@ -1,11 +1,11 @@
 use crate::cli::CmdClean;
-use crate::util::BlockDevice;
+use crate::util::Partition;
 use crate::{DIRTY_FLAG_FILE, LINK_DIR, MUSIC_DIR, prelude::*};
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use std::io::Write;
 
-pub fn clean(target: BlockDevice, interactive: bool, args: CmdClean) -> Result<()> {
+pub fn clean(target: Partition, interactive: bool, args: CmdClean) -> Result<()> {
     if interactive {
         crate::confirm_prompt(format!(
             "Cleaning partition {target}, do you wish to proceed?",

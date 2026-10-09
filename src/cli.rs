@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-
 use clap::{Args, Parser, Subcommand};
 use humantime::Duration;
 
@@ -45,6 +44,7 @@ pub struct CmdClean {
 pub struct CmdImport {
     /// Files or directories to recursively scan for MP3 files to import
     #[clap(required = true, num_args = 1..)]
+    #[arg(value_hint = clap::ValueHint::FilePath)]
     pub paths: Vec<PathBuf>,
 }
 
@@ -66,6 +66,7 @@ pub struct CmdProcess {
 
     /// Files or directories to recursively scan for MP3 files to fix
     #[clap(required = true, num_args = 1..)]
+    #[arg(value_hint = clap::ValueHint::AnyPath)]
     pub paths: Vec<PathBuf>,
 }
 

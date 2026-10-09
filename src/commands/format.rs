@@ -1,15 +1,15 @@
 use crate::prelude::*;
-use crate::util::BlockDevice;
+use crate::util::{DiskOrPartition, Partition};
 use crate::{LABEL, LINK_DIR, MUSIC_DIR};
 use fatfs::{FileSystem, FsOptions};
 use fscommon::BufStream;
 use std::io::prelude::*;
 
-pub fn format(mut target: BlockDevice, interactive: bool) -> Result<()> {
+pub fn format(mut target: DiskOrPartition, interactive: bool) -> Result<()> {
     if interactive {
         crate::confirm_prompt(format!(
             "Formatting {} {target}, do you wish to proceed?",
-            if target.is_partition {
+            if matches!(&target, DiskOrPartition::Partition(_)) {
                 "partition"
             } else {
                 "disk"
@@ -18,38 +18,49 @@ pub fn format(mut target: BlockDevice, interactive: bool) -> Result<()> {
     }
 
     // if its a disk format the whole disk
-    if !target.is_partition {
+    if let DiskOrPartition::Disk(disk) = &target {
         println!("Formatting the disk..");
-        format_disk(&target.path)?;
+        format_disk(&disk.path)?;
 
         // wait for the partition to be reloaded
         std::thread::sleep(std::time::Duration::from_secs(1));
 
         // re-query the device
-        target = crate::lsblk::query_block_device(&target.path)?;
+        target = crate::lsblk::query_block_device(&disk.path)?;
+
+        let DiskOrPartition::Disk(target_disk) = &target else {
+            panic!("Got partition after formatting disk, something is broken");
+        };
 
         // use first partition
-        target = target
+        target = target_disk
             .partitions
-            .and_then(|x| x.first().cloned())
-            .with_context(|| anyhow!("Could not find a partition after formatting"))?;
+            .iter()
+            .cloned()
+            .next()
+            .with_context(|| anyhow!("Could not find a partition after formatting"))?
+            .into();
     }
 
+    let DiskOrPartition::Partition(target_partition) = &target else {
+        panic!("Got disk instead of partition");
+    };
+
     println!("Formatting the partition..");
-    format_partition(&target)?;
+    format_partition(&target_partition)?;
 
     println!("Setting up the directory structure..");
-    setup(&target)?;
+    setup(&target_partition)?;
 
     println!(
         "Formatting done, for any other commands please use {:?} as the device path",
-        target.path
+        target_partition.path
     );
 
     Ok(())
 }
 
-fn format_partition(target: &BlockDevice) -> Result<()> {
+fn format_partition(target: &Partition) -> Result<()> {
     use fatfs::{FormatVolumeOptions, StdIoWrapper, format_volume};
 
     let file = target.open(false)?;
@@ -91,7 +102,7 @@ fn format_disk(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn setup(target: &BlockDevice) -> Result<()> {
+fn setup(target: &Partition) -> Result<()> {
     let file = target.open(false)?;
     let stream = BufStream::new(file);
 
